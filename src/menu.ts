@@ -1,7 +1,7 @@
 import * as readline from 'node:readline'
 import type { AppData, SavedCity } from './types'
 import { searchCity } from './geocoding'
-import { getCurrentTemperature } from './forecast'
+import { getForecast, getWeatherDescription } from './forecast'
 import { loadData, saveData } from './storage'
 import { cyan, yellow, green, red, bold, dim } from './colors'
 
@@ -24,8 +24,8 @@ function renderMenu(data: AppData): void {
   console.log(cyan('════════════════════════════════════════'))
   console.log(cyan(bold('         WEATHER CLI')))
   console.log(cyan('════════════════════════════════════════'))
-  console.log(cyan('  1. Clima de ciudad default'))
-  console.log(cyan(`  2. Clima de todas las ciudades (${data.cities.length})`))
+  console.log(cyan('  1. Clima + 7 días (ciudad default)'))
+  console.log(cyan(`  2. Clima + 7 días (todas las ciudades) (${data.cities.length})`))
   console.log(cyan('  3. Buscar y agregar ciudad'))
   console.log(cyan('  4. Eliminar ciudad'))
   console.log(cyan('  5. Establecer ciudad default'))
@@ -47,6 +47,28 @@ function renderCityWeather(city: SavedCity, temp: number, unitSymbol: string, ti
   console.log(cyan('════════════════════════════════════════'))
 }
 
+function renderDailyForecast(daily: import('./types').DailyForecast, unitSymbol: string): void {
+  const dayNames = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+  console.log()
+  console.log(dim('  PRONÓSTICO 7 DÍAS:'))
+  console.log(dim('  ─────────────────────────────────────────────'))
+  for (let i = 0; i < daily.time.length; i++) {
+    const dateStr = daily.time[i] ?? ''
+    const date = new Date(dateStr + 'T12:00:00')
+    const dayName = dayNames[date.getDay()] ?? '???'
+    const parts = dateStr.split('-')
+    const formattedDate = `${dayName} ${parts[2]}/${parts[1]}`
+    const maxT = daily.temperature_2m_max[i]
+    const minT = daily.temperature_2m_min[i]
+    const code = daily.weathercode[i] ?? 0
+    const desc = getWeatherDescription(code)
+    const maxStr = Number.isInteger(maxT) ? maxT?.toString() : maxT?.toFixed(1)
+    const minStr = Number.isInteger(minT) ? minT?.toString() : minT?.toFixed(1)
+    console.log(`  ${cyan(formattedDate.padEnd(12))} ${yellow(`${maxStr}${unitSymbol}`)} / ${dim(`${minStr}${unitSymbol}`)}    ${desc}`)
+  }
+  console.log(dim('  ─────────────────────────────────────────────'))
+}
+
 // --- Option handlers ---
 
 async function handleDefaultCityWeather(data: AppData): Promise<void> {
@@ -60,9 +82,10 @@ async function handleDefaultCityWeather(data: AppData): Promise<void> {
     return
   }
   try {
-    const forecast = await getCurrentTemperature(city.latitude, city.longitude, data.unit)
+    const forecast = await getForecast(city.latitude, city.longitude, data.unit)
     const unitSymbol = forecast.current_units?.temperature_2m ?? (data.unit === 'celsius' ? '°C' : '°F')
     renderCityWeather(city, forecast.current.temperature_2m, unitSymbol, forecast.current.time)
+    if (forecast.daily) renderDailyForecast(forecast.daily, unitSymbol)
   } catch (error) {
     console.log(red(`\n  Error al obtener clima: ${error instanceof Error ? error.message : 'Error desconocido'}`))
   }
@@ -75,9 +98,10 @@ async function handleAllCitiesWeather(data: AppData): Promise<void> {
   }
   for (const city of data.cities) {
     try {
-      const forecast = await getCurrentTemperature(city.latitude, city.longitude, data.unit)
+      const forecast = await getForecast(city.latitude, city.longitude, data.unit)
       const unitSymbol = forecast.current_units?.temperature_2m ?? (data.unit === 'celsius' ? '°C' : '°F')
       renderCityWeather(city, forecast.current.temperature_2m, unitSymbol, forecast.current.time)
+      if (forecast.daily) renderDailyForecast(forecast.daily, unitSymbol)
     } catch (error) {
       console.log(red(`\n  Error al obtener clima de ${city.name}: ${error instanceof Error ? error.message : 'Error desconocido'}`))
     }
