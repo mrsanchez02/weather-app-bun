@@ -1,1 +1,3 @@
-console.log("Hello via Bun!");
+import { startMenu } from './src/menu'
+
+await startMenu()
