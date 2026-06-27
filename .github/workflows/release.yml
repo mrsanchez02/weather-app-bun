@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - linux-x64
+          - linux-arm64
+          - darwin-x64
+          - darwin-arm64
+          - windows-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun build --compile --target bun-${{ matrix.target }} src/index.ts --outfile dist/weather-${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weather-${{ matrix.target }}
+          path: dist/weather-${{ matrix.target }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "version=v$(jq -r '.version' package.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Check if tag exists
+        run: |
+          if git ls-remote --tags origin "${{ steps.version.outputs.version }}" | grep .; then
+            echo "Tag already exists — skipping release"
+            exit 0
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          files: dist/*/weather-*
+          generate_release_notes: true
